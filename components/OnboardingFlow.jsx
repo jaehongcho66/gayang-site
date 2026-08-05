@@ -11,17 +11,47 @@ const T = {
   paper: "#FAF6EF", paperDeep: "#F1EADC", ink: "#262019", inkSoft: "#5C5346",
   accent: "#C1440E", muted: "#A69C8C", line: "#E4DACB", white: "#FFFFFF", danger: "#B3261E",
   kakao: "#FEE500", kakaoText: "#3C1E1E",
-};
+} as const;
 
-const TEMPLATES = [
+type TemplateKey = "restaurant_cafe" | "beauty_salon" | "academy";
+
+interface TemplateOption {
+  key: TemplateKey;
+  label: string;
+  desc: string;
+  icon: React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
+}
+
+const TEMPLATES: TemplateOption[] = [
   { key: "restaurant_cafe", label: "음식점 · 카페", desc: "메뉴, 배달 링크, 예약 안내", icon: Store },
   { key: "beauty_salon", label: "미용실 · 네일샵", desc: "시술 메뉴, 디자이너 소개, 온라인 예약", icon: Scissors },
   { key: "academy", label: "학원 · 교습소", desc: "커리큘럼, 강사진, 상담 신청", icon: GraduationCap },
 ];
 
+/* ── 타입 정의 ─────────────────────────────────────────────── */
+interface SignUpForm {
+  email: string;
+  password: string;
+  fullName: string;
+}
+
+/** page.tsx의 setSite(s) 로 그대로 들어가는 사이트 결과 타입 */
+export interface CreatedSite {
+  siteId: string;
+  templateKey: TemplateKey;
+  subdomain: string;
+}
+
+type SubdomainStatus = null | "checking" | "available" | "taken";
+
+export interface OnboardingFlowProps {
+  /** 사이트 생성 완료 후 "정보 입력하러 가기"를 누르면 호출됨 */
+  onComplete?: (site: CreatedSite) => void;
+}
+
 /* ── 실제 Supabase API 레이어 ───────── */
 const mockApi = {
-  async signUpWithEmail({ email, password, fullName }) {
+  async signUpWithEmail({ email, password, fullName }: SignUpForm) {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -40,7 +70,7 @@ const mockApi = {
     return { user: null }; // 카카오는 리다이렉트 방식이라 여기서 바로 user를 못 받습니다
   },
 
-  async checkSubdomainAvailable(subdomain) {
+  async checkSubdomainAvailable(subdomain: string): Promise<boolean> {
     const { count, error } = await supabase
       .from("sites")
       .select("id", { count: "exact", head: true })
@@ -49,7 +79,7 @@ const mockApi = {
     return count === 0;
   },
 
-  async createSite({ templateKey, subdomain }) {
+  async createSite({ templateKey, subdomain }: { templateKey: TemplateKey; subdomain: string }): Promise<CreatedSite> {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error("로그인이 필요합니다.");
 
@@ -74,7 +104,7 @@ const mockApi = {
 };
 
 /* ── 공통 UI ─────────────────────────────────────────────── */
-function ProgressDots({ step, total }) {
+function ProgressDots({ step, total }: { step: number; total: number }) {
   return (
     <div style={{ display: "flex", gap: 6, justifyContent: "center", marginBottom: 28 }}>
       {Array.from({ length: total }).map((_, i) => (
@@ -86,19 +116,31 @@ function ProgressDots({ step, total }) {
     </div>
   );
 }
-const inputBase = {
+const inputBase: React.CSSProperties = {
   width: "100%", boxSizing: "border-box", border: `1px solid ${T.line}`, borderRadius: 10,
   padding: "12px 14px", fontSize: 14.5, color: T.ink, background: T.white, outline: "none", fontFamily: "inherit",
 };
-function InputField({ icon: Icon, ...props }) {
+
+interface InputFieldProps extends React.InputHTMLAttributes<HTMLInputElement> {
+  icon: React.ComponentType<{ size?: number; color?: string }>;
+}
+function InputField({ icon: Icon, ...props }: InputFieldProps) {
   return (
     <div style={{ position: "relative", marginBottom: 12 }}>
-      <Icon size={16} color={T.muted} style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)" }} />
+      <Icon size={16} color={T.muted} />
+      <span style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)" }} />
       <input {...props} style={{ ...inputBase, paddingLeft: 40 }} />
     </div>
   );
 }
-function PrimaryButton({ children, onClick, disabled, loading }) {
+
+interface PrimaryButtonProps {
+  children: React.ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+  loading?: boolean;
+}
+function PrimaryButton({ children, onClick, disabled, loading }: PrimaryButtonProps) {
   return (
     <button onClick={onClick} disabled={disabled || loading} style={{
       width: "100%", background: disabled ? T.muted : T.accent, color: T.white, border: "none",
@@ -112,18 +154,18 @@ function PrimaryButton({ children, onClick, disabled, loading }) {
 }
 
 /* ════════════════════ 메인 온보딩 컴포넌트 ════════════════════ */
-export default function OnboardingFlow({ onComplete }) {
+export default function OnboardingFlow({ onComplete }: OnboardingFlowProps) {
   const [step, setStep] = useState(0);
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState<{ id: string; email?: string } | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const [form, setForm] = useState({ email: "", password: "", fullName: "" });
-  const [templateKey, setTemplateKey] = useState(null);
+  const [form, setForm] = useState<SignUpForm>({ email: "", password: "", fullName: "" });
+  const [templateKey, setTemplateKey] = useState<TemplateKey | null>(null);
   const [subdomain, setSubdomain] = useState("");
-  const [subdomainStatus, setSubdomainStatus] = useState(null);
-  const [site, setSite] = useState(null);
-  const debounceRef = useRef(null);
+  const [subdomainStatus, setSubdomainStatus] = useState<SubdomainStatus>(null);
+  const [site, setSite] = useState<CreatedSite | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
     if (!subdomain || subdomain.length < 3) { setSubdomainStatus(null); return; }
@@ -146,7 +188,9 @@ export default function OnboardingFlow({ onComplete }) {
       const { user } = await mockApi.signUpWithEmail(form);
       setUser(user);
       setStep(1);
-    } catch (e) { setError(e.message); }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "가입 중 오류가 발생했어요.");
+    }
     setLoading(false);
   };
 
@@ -155,21 +199,26 @@ export default function OnboardingFlow({ onComplete }) {
     try {
       await mockApi.signUpWithKakao();
       // 카카오는 리다이렉트되므로 이후 로직은 리다이렉트 후 페이지에서 처리합니다
-    } catch (e) { setError(e.message); }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "카카오 로그인 중 오류가 발생했어요.");
+    }
     setLoading(false);
   };
 
   const handleCreateSite = async () => {
+    if (!templateKey) return;
     setLoading(true);
     try {
       const result = await mockApi.createSite({ templateKey, subdomain });
       setSite(result);
       setStep(3);
-    } catch (e) { setError(e.message); }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "사이트 생성 중 오류가 발생했어요.");
+    }
     setLoading(false);
   };
 
-  const cleanSubdomain = (v) => v.toLowerCase().replace(/[^a-z0-9-]/g, "");
+  const cleanSubdomain = (v: string) => v.toLowerCase().replace(/[^a-z0-9-]/g, "");
 
   return (
     <div style={{
@@ -286,7 +335,7 @@ export default function OnboardingFlow({ onComplete }) {
             {TEMPLATES.find((t) => t.key === site?.templateKey)?.label} 템플릿으로 시작합니다
           </p>
           <p style={{ fontSize: 14, fontWeight: 700, color: T.accent, margin: "0 0 28px" }}>{site?.subdomain}.mysite.com</p>
-          <PrimaryButton onClick={() => (onComplete ? onComplete(site) : alert("완료"))}>
+          <PrimaryButton onClick={() => (onComplete && site ? onComplete(site) : alert("완료"))}>
             정보 입력하러 가기 <ChevronRight size={16} />
           </PrimaryButton>
         </div>
