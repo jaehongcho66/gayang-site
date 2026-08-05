@@ -1,11 +1,10 @@
 "use client";
-
 import { useState } from "react";
-import OnboardingFlow from "../components/OnboardingFlow";
+import OnboardingFlow, { CreatedSite } from "../components/OnboardingFlow";
 import BuilderSplitView from "../components/BuilderSplitView";
 
 export default function Home() {
-  const [site, setSite] = useState(null);
+  const [site, setSite] = useState<CreatedSite | null>(null);
 
   if (!site) {
     return (
@@ -14,6 +13,5 @@ export default function Home() {
       </div>
     );
   }
-
   return <BuilderSplitView siteId={site.siteId} subdomain={site.subdomain} />;
 }
